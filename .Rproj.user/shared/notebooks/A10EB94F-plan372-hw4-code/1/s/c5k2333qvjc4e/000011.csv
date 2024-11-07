@@ -1,0 +1,6 @@
+"0",""
+"0","# Import the data"
+"0",""
+"0","data <- read_csv(""/Users/annamitchell/Documents/plan372/plan372-hw4/airport_pairs.csv"", show_col_types = FALSE)"
+"0",""
+"0","head(data)"

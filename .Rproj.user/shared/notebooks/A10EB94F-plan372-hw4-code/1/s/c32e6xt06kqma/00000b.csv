@@ -1,0 +1,7 @@
+"0",""
+"0","# Scatter plot of destination median income and total passengers"
+"0","ggplot(cbsa_to_cbsa, aes(x = dest_median_income, y = total_passengers)) +"
+"0","  geom_point() +"
+"0","  labs(title = ""Destination Median Income and Total Passengers"", x = ""Destination Median Income"", y = ""Total Passengers"") +"
+"0","  scale_y_continuous(labels = label_number()) + "
+"0","  scale_x_continuous(labels = label_number()) "

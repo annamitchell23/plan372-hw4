@@ -1,0 +1,7 @@
+"0",""
+"0","# Scatter plot of flight distance and total passengers"
+"0","ggplot(cbsa_to_cbsa, aes(x = distancemiles, y = total_passengers)) +"
+"0","  geom_point() +"
+"0","  labs(title = ""Flight Distance and Total Passengers"", x = ""Flight Distance"", y = ""Total Passengers"") +"
+"0","  scale_y_continuous(labels = label_number()) +  "
+"0","  scale_x_continuous(labels = label_number()) "

@@ -1,0 +1,255 @@
+---
+title: "plan372-hw4-code"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-11-05"
+---
+
+```{r}
+
+# Import packages
+library(scales)
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidycensus)
+```
+
+```{r}
+
+# Import the data
+
+data <- read_csv("/Users/annamitchell/Documents/plan372/plan372-hw4/airport_pairs.csv", show_col_types = FALSE)
+
+head(data)
+```
+
+Question 1:
+
+```{r}
+
+# Filter for flights that are either to or from RDU
+
+rdu_flights <- filter(data, origin == "RDU" | dest == "RDU")
+
+# Filter for flights that have more than 10,000 passengers, and select only appropriate columns
+
+rdu_flights <- data %>%
+  select(origin, dest, passengers) %>%
+  filter(passengers > 10000)
+
+rdu_flights
+```
+
+
+Question 2:
+
+```{r}
+# Input API key
+census_api_key("b807d2684cc441254bcfb4ce580e558a1b4a71b8")
+```
+
+```{r}
+
+# Get the census data with variables that may correlate to air traffic.
+census_data <- get_acs(
+  geography = "cbsa",
+  variables = c(
+    "B01003_001",  # Total population
+    "B19013_001",  # Median household income
+    "B19301_001",  # Per capita income
+    "B25077_001"   # Median home value
+  ),
+  year = 2021,
+)
+
+# Make it so that every CBSA is a single row with separate columns for each variable
+census_data_wide <- census_data %>%
+  select(GEOID, variable, estimate) %>%
+  pivot_wider(names_from = variable, values_from = estimate) # Source: the tidyr documentation
+
+# Rename the columns
+colnames(census_data_wide) <- c("cbsa", "population", "median_income", "per_capita_income", "median_home_value")
+
+# Rename columns for origin data
+origin_census <- census_data_wide %>%
+  rename(
+    origin_cbsa = cbsa,
+    origin_population = population,
+    origin_median_income = median_income,
+    origin_per_capita_income = per_capita_income,
+    origin_median_home_value = median_home_value
+  )
+
+# Rename columns for destination data
+dest_census <- census_data_wide %>%
+  rename(
+    dest_cbsa = cbsa,
+    dest_population = population,
+    dest_median_income = median_income,
+    dest_per_capita_income = per_capita_income,
+    dest_median_home_value = median_home_value
+  )
+
+# Solve conflicting types
+data <- data %>%
+  mutate(
+    origin_cbsa = as.character(origin_cbsa),
+    dest_cbsa = as.character(dest_cbsa)
+  )
+
+# Join origin and destination census data to original airplane data
+airport_with_census <- data %>%
+  left_join(origin_census, by = "origin_cbsa") %>%
+  left_join(dest_census, by = "dest_cbsa")
+
+# Create a new dataset that shows CBSA to CBSA volumes and not airport-to-airport
+cbsa_to_cbsa <- airport_with_census %>%
+  group_by(origin_cbsa, dest_cbsa, origin_population, dest_population,
+           origin_median_income, dest_median_income,
+           origin_per_capita_income, dest_per_capita_income,
+           origin_median_home_value, dest_median_home_value, distancemiles) %>%
+  summarize(total_passengers = sum(passengers, na.rm = TRUE)) %>%
+  ungroup()
+
+# Scatter plot of origin population and total passengers
+ggplot(cbsa_to_cbsa, aes(x = origin_population, y = total_passengers)) +
+  geom_point() +
+  labs(title = "Origin Population and Total Passengers", x = "Origin Population", y = "Total Passengers")+
+   scale_y_continuous(labels = label_number()) + # Source: https://www.geeksforgeeks.org/change-formatting-of-numbers-of-ggplot2-plot-axis-in-r/
+  scale_x_continuous(labels = label_number()) 
+
+# Scatter plot of destination population and total passengers
+ggplot(cbsa_to_cbsa, aes(x = dest_population, y = total_passengers)) +
+  geom_point() +
+  labs(title = "Destination Population and Total Passengers", x = "Destination Population", y = "Total Passengers") +
+  scale_y_continuous(labels = label_number()) +
+  scale_x_continuous(labels = label_number()) 
+
+# Scatter plot of flight distance and total passengers
+ggplot(cbsa_to_cbsa, aes(x = distancemiles, y = total_passengers)) +
+  geom_point() +
+  labs(title = "Flight Distance and Total Passengers", x = "Flight Distance", y = "Total Passengers") +
+  scale_y_continuous(labels = label_number()) +  
+  scale_x_continuous(labels = label_number()) 
+
+# Scatter plot of origin median income and total passengers
+ggplot(cbsa_to_cbsa, aes(x = origin_median_income, y = total_passengers)) +
+  geom_point() +
+  labs(title = "Origin Median Income and Total Passengers", x = "Origin Median Income", y = "Total Passengers") +
+  scale_y_continuous(labels = label_number()) +  
+  scale_x_continuous(labels = label_number()) 
+
+# Scatter plot of destination median income and total passengers
+ggplot(cbsa_to_cbsa, aes(x = dest_median_income, y = total_passengers)) +
+  geom_point() +
+  labs(title = "Destination Median Income and Total Passengers", x = "Destination Median Income", y = "Total Passengers") +
+  scale_y_continuous(labels = label_number()) + 
+  scale_x_continuous(labels = label_number()) 
+```
+
+  When looking at Origin Population and Total Passengers, there isn't too much of a trend, but I do see a large obvious cluster in the bottom left, that suggests that flights coming out of lower-populated areas have fewer passengers, which makes sense. If an area is less populated, there are less people to buy those flights. We see roughly an identical trend for the Destination Population and Total Passengers graph as well.
+  With Flight Distance and Total Passengers, I also see an obvious cluster in the lower left corner, with the majority of flights under 3,000. The flights with the most passengers are also on the left half of the graph. This suggests that very long flights have fewer passengers, and the flights with the most passengers are the shortest flights. This would make sense in reality- people make quick trips more often than they do very long flights, as it's rare for most people to travel internationally very frequently.
+  When looking at Origin Median Income and Total passengers, we see a trend towards the middle of the map. This makes sense because the middle of the x-axis represents the most average income for people, which is where most common folk lie. There doesn't seem to be a strong trend when comparing the two axis though- if anything, we could say that the flights with the most passengers seem to trend towards the average income instead of outliers. The higher median income outliers still have many passengers, though. Lastly, when looking at Destination Median Income and Total passengers, we see a very similar trend with no major differences.
+
+Question 3:
+```{r}
+# Run a regression
+model <- lm(total_passengers ~ origin_population + dest_population + distancemiles +
+              origin_median_income + dest_median_income + 
+              origin_per_capita_income + dest_per_capita_income +
+              origin_median_home_value + dest_median_home_value, 
+            data = cbsa_to_cbsa)
+
+# See the results
+summary(model)
+```
+
+Interpreting Coefficients:
+  The coefficient for origin population is roughly 6.3, which means that for every 1,000 person increase in the population of the origin place, the total CBSA-to-CBSA passenger volume increases by around 6.3. The p-value is significant, less than 0.001, which makes sense in reality. Larger populations at an origin tend to generate more travel demand because there are naturally more people there to purchase these flights.
+  The coefficient for destination population is also around 6.3, which means that a 1,000 person increase in the population of the destination place is associated with an increase of around 6.3 passengers in travel volume. With a significant p-value of less than 0.001, this also makes sense because places with large populations attract more visitors and tourists.
+  When it comes to distance, the coefficient is around -2.6, meaning that for each additional mile of distance between the origin and destination, the passenger volume decreases by around 26 passengers. With a p-value of less than 0.001, this is also statistically significant. This also makes intuitive sense- longer flights usually have lower demand because of cost and travel time.
+  For origin media income, the coefficient is around 1.6, indicating that for each dollar increase in media income at the origin, there is an associated increase in passenger volume of about 1.6. With a statistically significant p-value of less than 0.001, this is intuitive- wealthier areas usually have more people who frequently travel as they are able to afford it.
+  With destination median income at 1.5, this means that each additional dollar in median income at the destination brings an increase of 1.5 passengers. This has a significant effect and indicates that destinations with a higher income could attract more visitors and tourists.
+  For origin per capita income, the coefficient is -1.4, telling us that with a dollar increase in per capita income for the origin, the passenger volume increases by 1.4. Despite a significant p-value of 0.006, it doesn't seem intuitive.
+  On the flip side, for destination per capita income, the coefficient is -1.2, meaning that with a $1 increase in per capita income there is a decrease in about 1.2 passengers. Once again, despte a significant p-value, this also seems counterintuitive.
+  When we look at median home value, the coefficient is -0.018, meaning that a dollar increase in the median home value at the origin means a decrease in about 0.01 passengers. This is not statistically significant with a p-value of 0.15.
+  Lastly, with median income in destinations, the coefficient s -0.019. A dollar increase in median household value at the destination brings a decrease of 0.019 passengers. This is also not statistically significant with a p-value of 0.13.
+  
+Model Fit:
+  The R-squared value of 0.108 tells us that this model only explains about 10.8% of any differences in passenger volumes. While this value tells us that we have part of the story, it lets us know that there are several other factors that determine passenger volume that we did not take into consideration. Potential ideas for these variables may be seasonal patterns or holidays, weather, geographic preferences, and more.
+  The majority of the coefficients were statistically significant, which tells us that they likely do contribute to predicting passenger volume, namely population, income, and distance for both destination and origin. Median home values did not seem to impact the demand of passengers in this model.
+  
+Question 4:
+
+```{r}
+# Create a dataset that has all of the dependent variables and their actual values from the data
+
+potential_routes <- data.frame(
+  origin_cbsa = rep("RDU", 4),
+  dest_cbsa = c("PDX", "ELP", "TLH", "SMF"),
+  origin_population = c(1391801, 1391801, 1391801, 1391801),
+  dest_population = c(2493429, 863807, 382747, 2379368),
+  distancemiles = c(2363, 1606, 496, 2345),
+  origin_median_income = c(83581, 83581, 83581, 83581),      
+  dest_median_income = c(82901, 50849, 56304, 81264),       
+  origin_per_capita_income = c(42554, 42554, 42554, 42554),
+  dest_per_capita_income = c(42946, 23934, 31771, 39510),
+  origin_median_home_value = c(289700, 289700, 289700, 289700),
+  dest_median_home_value = c(421300, 131200, 198300, 441800)
+)
+
+# Create a set of predictions for the other direction
+potential_routes_reverse <- potential_routes %>%
+  rename(
+    origin_cbsa = dest_cbsa,
+    dest_cbsa = origin_cbsa,
+    origin_population = dest_population,
+    dest_population = origin_population,
+    origin_median_income = dest_median_income,
+    dest_median_income = origin_median_income,
+    origin_per_capita_income = dest_per_capita_income,
+    dest_per_capita_income = origin_per_capita_income,
+    origin_median_home_value = dest_median_home_value,
+    dest_median_home_value = origin_median_home_value
+  )
+
+# Combine the original and reverse routes
+all_potential_routes <- bind_rows(potential_routes, potential_routes_reverse)
+
+# Make predictions for both directions to and from RDU
+predictions <- all_potential_routes %>%
+  mutate(
+    predicted_demand = predict(model, newdata = all_potential_routes)
+  )
+
+# Divide the results
+predictions <- predictions %>%
+  mutate(
+    route_direction = ifelse(origin_cbsa == "RDU", "RDU to Destination", "Destination to RDU"))
+
+predictions %>%
+  select(origin_cbsa, dest_cbsa, distancemiles, predicted_demand, route_direction)
+```
+
+  Based on the projected demand figures, the most popular routes are Raleigh-Durham to Tallahassee with a predicted demand of 43,698 passengers. Second, not far behind, is Tallahassee to Raleigh-Durham with a predicted demand of 43,924 passengers.
+  
+  We would recommend these two routes for the new routes to be implemented. It is the quickest flight out of the four, which is in-line with our model indicating that shorter flights have higher demand. It is in the top ten cities in terms of population in Florida, which makes sense. Our model calculated that higher-populated areas have higher demand in passengers. There are higher-income areas in Tallahassee, but it is not necessarily a metropolitan hub, which could suggest some overestimation or error in our model.
+  
+
+  Given the moderate to low R-squared value of 10.8%, our model does not explain the whole story behind passenger demand. This means that it would be a mistake to take the recommendation without considering other factors that could impact passenger demand. However, many of our coefficients were statistically significant, so it is safe to say that our model plays a role in predicting passenger volume, even if it is a smaller amount. We would recommend taking into account our recommendation but proceeding with caution as well as investigating other variables as well.
+  
+
+
+
+
+
+
+
+
+
+
+
+
